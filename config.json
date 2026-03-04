@@ -1,3 +1,5 @@
 {
-  "sound": true
+  "sound": true,
+  "cooldownSeconds": 5,
+  "onlyBackground": true
 }

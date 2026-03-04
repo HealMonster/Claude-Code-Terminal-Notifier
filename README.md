@@ -85,13 +85,17 @@ Hook 配置在会话启动时加载，修改后需要**新开一个 Claude Code 
 
 ```json
 {
-  "sound": true
+  "sound": true,
+  "cooldownSeconds": 5,
+  "onlyBackground": true
 }
 ```
 
 | 选项 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `sound` | boolean | `true` | 通知是否播放提示音（适用于 Windows 和 macOS） |
+| `cooldownSeconds` | number | `5` | 回复完成通知的冷却时间（秒），冷却期内不重复通知。权限确认不受此限制 |
+| `onlyBackground` | boolean | `true` | 终端在前台时抑制回复完成通知。权限确认始终通知 |
 
 ## 文件结构
 
