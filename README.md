@@ -1,13 +1,21 @@
 # Claude-Code-Terminal-Notifier
 
-跨平台 Claude Code 桌面通知 — 当 Claude 完成回复或需要权限确认时，自动弹出原生系统通知。
+跨平台 Claude Code 桌面通知 — 当 Claude 完成回复、需要权限确认或提问时，自动弹出原生系统通知。
 
 ## 通知触发时机
 
-| 场景 | Hook 类型 | 说明 |
-|------|----------|------|
-| Claude 完成回复 | Stop | 回复结束后通知你查看结果 |
-| 等待权限确认 | Notification (`permission_prompt`) | Bash 命令、文件写入等需要你确认时通知 |
+| 场景 | Hook / Matcher | 通知标题 | 冷却/前台检查 |
+|------|---------------|---------|-------------|
+| Claude 停止响应 | `Stop` hook | Claude Code | 受冷却+前台检查 |
+| Claude 真正空闲，等待用户输入 | `idle_prompt` | Claude Code - 回复完成 | 受冷却+前台检查 |
+| 等待权限确认（Bash、文件写入等） | `permission_prompt` | Claude Code - 需要确认 | 始终通知 |
+| Claude 提问，等待用户回答 | `elicitation_dialog` | Claude Code - 需要回答 | 始终通知 |
+
+**Stop hook 精准过滤**：Stop hook 通过 `stop_hook_active` 字段过滤 stop/resume 循环中的中间断点，仅在真正停止时通知。
+
+**项目名称显示**：通知正文自动包含当前项目目录名（如 `[Laicai] 回复已完成`），方便多会话场景区分来源。
+
+**Toast 去重**（Windows）：同类型通知替换前一条而非堆叠，保持通知中心整洁。
 
 ## 原理
 
@@ -46,27 +54,37 @@ chmod +x ~/Claude-Code-Terminal-Notifier/scripts/claude-notify.sh
   "hooks": {
     "Stop": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /path/to/Claude-Code-Terminal-Notifier/scripts/claude-notify.sh",
-            "async": true,
-            "timeout": 10
-          }
-        ]
+        "hooks": [{
+          "type": "command",
+          "command": "bash /path/to/Claude-Code-Terminal-Notifier/scripts/claude-notify.sh",
+          "async": true, "timeout": 10
+        }]
       }
     ],
     "Notification": [
       {
         "matcher": "permission_prompt",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /path/to/Claude-Code-Terminal-Notifier/scripts/claude-notify.sh",
-            "async": true,
-            "timeout": 10
-          }
-        ]
+        "hooks": [{
+          "type": "command",
+          "command": "bash /path/to/Claude-Code-Terminal-Notifier/scripts/claude-notify.sh",
+          "async": true, "timeout": 10
+        }]
+      },
+      {
+        "matcher": "idle_prompt",
+        "hooks": [{
+          "type": "command",
+          "command": "bash /path/to/Claude-Code-Terminal-Notifier/scripts/claude-notify.sh",
+          "async": true, "timeout": 10
+        }]
+      },
+      {
+        "matcher": "elicitation_dialog",
+        "hooks": [{
+          "type": "command",
+          "command": "bash /path/to/Claude-Code-Terminal-Notifier/scripts/claude-notify.sh",
+          "async": true, "timeout": 10
+        }]
       }
     ]
   }
@@ -94,8 +112,8 @@ Hook 配置在会话启动时加载，修改后需要**新开一个 Claude Code 
 | 选项 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `sound` | boolean | `true` | 通知是否播放提示音（适用于 Windows 和 macOS） |
-| `cooldownSeconds` | number | `5` | 回复完成通知的冷却时间（秒），冷却期内不重复通知。权限确认不受此限制 |
-| `onlyBackground` | boolean | `true` | 终端在前台时抑制回复完成通知。权限确认始终通知 |
+| `cooldownSeconds` | number | `5` | Stop / idle 通知的冷却时间（秒），冷却期内不重复通知。权限确认和提问通知不受此限制 |
+| `onlyBackground` | boolean | `true` | 终端在前台时抑制 Stop / idle 通知。权限确认和提问通知始终弹出 |
 
 ## 文件结构
 
@@ -114,6 +132,7 @@ Claude-Code-Terminal-Notifier/
 
 - **无通知弹出**：确认 Windows 设置 → 系统 → 通知 中 PowerShell 通知未被关闭
 - **Git Bash 找不到 powershell.exe**：确认 `C:\Windows\System32\WindowsPowerShell\v1.0` 在 PATH 中
+- **通知堆叠**：正常情况下同类型通知会自动替换前一条；如仍堆叠，检查 PowerShell 版本是否支持 Toast Tag
 
 ### macOS
 

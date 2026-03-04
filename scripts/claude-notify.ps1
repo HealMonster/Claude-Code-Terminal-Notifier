@@ -5,7 +5,7 @@
 #   CLAUDE_NOTIFY_MSG     — 通知正文
 #   CLAUDE_NOTIFY_SOUND   — "true"/"false" 声音开关
 #   CLAUDE_NOTIFY_ONLY_BG — "true"/"false" 仅后台通知
-#   CLAUDE_NOTIFY_TYPE    — "stop"/"permission" 通知类型
+#   CLAUDE_NOTIFY_TYPE    — "stop"/"idle"/"permission"/"elicitation" 通知类型
 
 try {
     $title = $env:CLAUDE_NOTIFY_TITLE
@@ -14,8 +14,8 @@ try {
     if (-not $title) { $title = "Claude Code" }
     if (-not $msg) { $msg = "(no message)" }
 
-    # 前台检查：仅对 stop 类型生效，permission 始终通知
-    if ($env:CLAUDE_NOTIFY_ONLY_BG -eq "true" -and $notifyType -eq "stop") {
+    # 前台检查：对 stop / idle 类型生效，permission / elicitation 始终通知
+    if ($env:CLAUDE_NOTIFY_ONLY_BG -eq "true" -and ($notifyType -eq "stop" -or $notifyType -eq "idle")) {
         Add-Type -MemberDefinition '
             [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
             [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
@@ -64,6 +64,13 @@ try {
 
     $appId = "{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe"
     $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
+
+    # Toast Tag 去重：同类型通知替换前一条而非堆叠
+    if ($notifyType) {
+        $toast.Tag = "claude-$notifyType"
+        $toast.Group = "claude-code"
+    }
+
     [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show($toast)
 }
 catch {

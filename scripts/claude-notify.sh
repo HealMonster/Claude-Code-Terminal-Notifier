@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # claude-notify.sh
 # 跨平台 Claude Code Hook 通知脚本
-# 同时支持 Stop hook 和 Notification hook（如 permission_prompt）
+# 同时支持 Stop hook 和 Notification hook（permission_prompt / idle_prompt / elicitation_dialog）
 #
 # 优化特性：
-#   - 区分通知类型：回复完成 vs 需要确认，标题不同
-#   - 冷却防刷屏：Stop 通知有冷却期，权限确认始终通知
-#   - 仅后台通知：终端在前台时抑制 Stop 通知，权限确认始终通知
+#   - Stop hook：过滤 stop/resume 循环中间断点（stop_hook_active=true 时跳过）
+#   - 项目名称：通知正文显示当前项目目录名，方便多会话区分
+#   - 冷却防刷屏：stop / idle 通知有冷却期，permission / elicitation 始终通知
+#   - 仅后台通知：终端在前台时抑制 stop / idle 通知，permission / elicitation 始终通知
+#   - Toast 去重：Windows 同类型通知替换而非堆叠
 #
 # 支持平台：
 #   - Windows 10+（委托 claude-notify.ps1，WinRT Toast）
@@ -41,7 +43,7 @@ if [ -f "$CONFIG_FILE" ]; then
   fi
 fi
 
-# 用 node 解析 JSON，自动检测 hook 类型
+# 用 node 解析 JSON，自动检测 hook 类型（Stop / Notification）
 # 输出四行：action、type、title、message
 PARSED=$(node -e "
   let buf = '';
@@ -49,6 +51,11 @@ PARSED=$(node -e "
   process.stdin.on('data', c => buf += c);
   process.stdin.on('end', () => {
     const d = JSON.parse(buf);
+
+    // 从 cwd 提取项目名
+    const cwd = d.cwd || '';
+    const projectName = cwd.replace(/\\\\/g, '/').split('/').filter(Boolean).pop() || '';
+    const prefix = projectName ? '[' + projectName + '] ' : '';
 
     // Stop hook
     if ('stop_hook_active' in d) {
@@ -61,7 +68,7 @@ PARSED=$(node -e "
       console.log('show');
       console.log('stop');
       console.log('Claude Code');
-      console.log(msg);
+      console.log(prefix + msg);
       return;
     }
 
@@ -69,10 +76,29 @@ PARSED=$(node -e "
     if ('notification_type' in d) {
       let msg = (d.message || '').split(/\r?\n/)[0].trim();
       if (msg.length > 120) msg = msg.substring(0, 120) + '...';
-      console.log('show');
-      console.log('permission');
-      console.log('Claude Code - \u9700\u8981\u786e\u8ba4');
-      console.log(msg || '\u9700\u8981\u4f60\u7684\u786e\u8ba4');
+
+      switch (d.notification_type) {
+        case 'permission_prompt':
+          console.log('show');
+          console.log('permission');
+          console.log('Claude Code - 需要确认');
+          console.log(prefix + (msg || '需要你的确认'));
+          break;
+        case 'idle_prompt':
+          console.log('show');
+          console.log('idle');
+          console.log('Claude Code - 回复完成');
+          console.log(prefix + (msg || '回复已完成'));
+          break;
+        case 'elicitation_dialog':
+          console.log('show');
+          console.log('elicitation');
+          console.log('Claude Code - 需要回答');
+          console.log(prefix + (msg || '有问题需要你回答'));
+          break;
+        default:
+          console.log('skip'); console.log(''); console.log(''); console.log('');
+      }
       return;
     }
 
@@ -90,11 +116,11 @@ if [ "$ACTION" = "skip" ]; then
   exit 0
 fi
 
-# --- 以下检查仅对 stop 类型生效，permission 始终通知 ---
+# --- 冷却+前台检查对 stop / idle 类型生效，permission / elicitation 始终通知 ---
 
 COOLDOWN_FILE="/tmp/claude-notify-last"
 
-if [ "$TYPE" = "stop" ]; then
+if [ "$TYPE" = "stop" ] || [ "$TYPE" = "idle" ]; then
   # 冷却检查：N 秒内不重复通知
   if [ "$COOLDOWN" -gt 0 ] && [ -f "$COOLDOWN_FILE" ]; then
     LAST=$(cat "$COOLDOWN_FILE" 2>/dev/null || echo "0")
@@ -165,8 +191,8 @@ case "$OS" in
     ;;
 esac
 
-# 更新冷却时间戳（仅 stop 类型且实际发送了通知）
-if [ "$TYPE" = "stop" ]; then
+# 更新冷却时间戳（stop / idle 类型且实际发送了通知）
+if [ "$TYPE" = "stop" ] || [ "$TYPE" = "idle" ]; then
   date +%s > "$COOLDOWN_FILE" 2>/dev/null || true
 fi
 
